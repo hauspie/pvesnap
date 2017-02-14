@@ -1,0 +1,90 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+# Per node snapshot to keep
+my $MAX_SNAP_COUNT=14;
+# If empty snapshot all containers
+my @NODES_TO_SNAP=();
+# The prefix of the snapshots managed by this tool
+my $SNAP_PREFIX="auto_";
+
+sub container_list
+{
+	my @containers = ();
+	foreach (`pct list`)
+	{
+		chomp;
+		next if /VMID/;
+		my ($ctid) = split /\s+/;
+		push @containers, $ctid;
+	}
+	return @containers;
+}
+
+sub remove_snapshot
+{
+	my ($container, $snapshot) = @_;
+	if (system("pct delsnapshot $container $snapshot") == 0)
+	{
+		print "Snapshot $snapshot successfully deleted for container $container\n";
+	}
+	else
+	{
+		print STDERR "Failed to delete snapshot $snapshot for containter $container\n";
+	}
+}
+
+sub create_snapshot
+{
+	my ($container, $snapshot) = @_;
+	if (system("pct snapshot $container $snapshot") == 0)
+	{
+		print "Snapshot $snapshot successfully created for container $container\n";
+	}
+	else
+	{
+		print STDERR "Failed to create snapshot $snapshot for containter $container\n";
+	}
+}
+
+sub process_container
+{
+	my ($container) = @_;
+	my @snapshots = ();
+	foreach (`pct listsnapshot $container`)
+	{
+		chomp;
+		next if ! /^$SNAP_PREFIX/;
+		my ($name) = split /\s+/;
+		push @snapshots, $name;
+	}
+	@snapshots = sort @snapshots;
+	# removes old snapshots
+	if (@snapshots)
+	{
+		my $snap_count = @snapshots;
+		my $snap_to_remove = $snap_count - ($MAX_SNAP_COUNT-1);
+		if ($snap_to_remove > 0)
+		{
+			my @snapshots_to_remove = splice @snapshots, 0, $snap_to_remove;
+			foreach (@snapshots_to_remove)
+			{
+				remove_snapshot($container, $_);
+			}	
+
+		}
+	}
+	# Create new snapshot
+	my $new_snap_name = "${SNAP_PREFIX}" . time();
+	create_snapshot($container, $new_snap_name);	
+}
+
+
+
+my @containers = @NODES_TO_SNAP;
+@containers = container_list() if not @containers;
+container_list();
+
+map { process_container($_) } @containers;
