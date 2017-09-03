@@ -10,12 +10,15 @@ my @NODES_TO_SNAP=();
 # The prefix of the snapshots managed by this tool
 my $SNAP_PREFIX="auto_";
 
+my $PVE_CMD="qm";
+
 sub container_list
 {
 	my @containers = ();
-	foreach (`pct list`)
+	foreach (`$PVE_CMD list`)
 	{
 		chomp;
+		s/^\s+//; # trim spaces
 		next if /VMID/;
 		my ($ctid) = split /\s+/;
 		push @containers, $ctid;
@@ -26,7 +29,7 @@ sub container_list
 sub remove_snapshot
 {
 	my ($container, $snapshot) = @_;
-	if (system("pct delsnapshot $container $snapshot") == 0)
+	if (system("$PVE_CMD delsnapshot $container $snapshot") == 0)
 	{
 		print "Snapshot $snapshot successfully deleted for container $container\n";
 	}
@@ -39,7 +42,7 @@ sub remove_snapshot
 sub create_snapshot
 {
 	my ($container, $snapshot) = @_;
-	if (system("pct snapshot $container $snapshot") == 0)
+	if (system("$PVE_CMD snapshot $container $snapshot") == 0)
 	{
 		print "Snapshot $snapshot successfully created for container $container\n";
 	}
@@ -53,7 +56,7 @@ sub process_container
 {
 	my ($container) = @_;
 	my @snapshots = ();
-	foreach (`pct listsnapshot $container`)
+	foreach (`$PVE_CMD listsnapshot $container`)
 	{
 		chomp;
 		next if ! /^$SNAP_PREFIX/;
@@ -81,10 +84,13 @@ sub process_container
 	create_snapshot($container, $new_snap_name);	
 }
 
+# run for containers and for vm
+foreach ("pct", "qm") 
+{
+	$PVE_CMD = $_;
+	my @containers = @NODES_TO_SNAP;
+	@containers = container_list() if not @containers;
+	container_list();
 
-
-my @containers = @NODES_TO_SNAP;
-@containers = container_list() if not @containers;
-container_list();
-
-map { process_container($_) } @containers;
+	map { process_container($_) } @containers;
+}
